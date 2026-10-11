@@ -69,9 +69,9 @@ const GROUP = 4;
 
 /** Human-friendly recovery key: base64url split in groups. Show it, save as a file, or render as QR. */
 export function exportRecoveryKey(key: Uint8Array): string {
-  return b64(key).match(new RegExp(`.{1,${GROUP}}`, "g"))!.join("-");
+  return b64(key).match(new RegExp(`.{1,${GROUP}}`, "g"))!.join(" ");
 }
 
 export function importRecoveryKey(text: string): Uint8Array {
-  return unb64(text.replace(/[\s-]/g, ""));
+  return unb64(text.replace(/\s/g, ""));
 }

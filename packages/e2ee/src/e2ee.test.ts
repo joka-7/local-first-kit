@@ -27,3 +27,10 @@ describe("e2ee", () => {
     expect(e.importRecoveryKey(e.exportRecoveryKey(k))).toEqual(k);
   });
 });
+
+it("recovery key survives many random keys", () => {
+  for (let i = 0; i < 500; i++) {
+    const k = e.generateKey();
+    expect(e.importRecoveryKey(e.exportRecoveryKey(k))).toEqual(k);
+  }
+});
