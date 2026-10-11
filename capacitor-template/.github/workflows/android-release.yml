@@ -1,0 +1,44 @@
+name: Android release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Decode keystore
+        run: echo "${ANDROID_KEYSTORE_B64}${ANDROID_KEYSTORE_B64_2}" | base64 -d > android/app/release.keystore
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_B64_2: ${{ secrets.ANDROID_KEYSTORE_B64_2 }}
+      - name: Build signed APK
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$PWD/app/release.keystore" \
+            -Pandroid.injected.signing.store.password="$KEY_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="${KEY_ALIAS:-release}" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
+        env:
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: android/app/build/outputs/apk/release/*.apk
+      - name: Attach to release
+        if: github.event_name == 'release'
+        run: gh release upload "${{ github.event.release.tag_name }}" android/app/build/outputs/apk/release/*.apk --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

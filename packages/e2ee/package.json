@@ -1,0 +1,12 @@
+{
+  "name": "@joka-7/e2ee",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": { "build": "tsc -p ." },
+  "dependencies": { "libsodium-wrappers": "^0.7.15" },
+  "devDependencies": { "@types/libsodium-wrappers": "^0.7.14" },
+  "license": "MIT"
+}

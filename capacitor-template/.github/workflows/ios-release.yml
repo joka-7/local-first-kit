@@ -1,0 +1,18 @@
+name: iOS release (disabled until an Apple Developer account exists)
+on:
+  workflow_dispatch:
+jobs:
+  ios:
+    if: ${{ vars.IOS_ENABLED == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci && npm run build
+      - run: npx cap add ios && npx cap sync ios
+      - name: Archive
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release \
+            -archivePath build/App.xcarchive archive CODE_SIGNING_ALLOWED=NO
+      # TODO when an account exists: import certificate/profile from secrets, export IPA, upload to TestFlight.
