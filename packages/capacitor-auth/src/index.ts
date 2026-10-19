@@ -8,7 +8,7 @@
  * has granted it, which the browser flow cannot.
  *
  * Returns tokens in the shape Google's browser token client uses
- * (`{ access_token, expires_in }`) so @joka-7/drive-sync treats both alike.
+ * (`{ access_token, expires_in }`) so @joka-07/drive-sync treats both alike.
  */
 
 const SCOPES = ["https://www.googleapis.com/auth/drive.appdata", "email", "profile"];

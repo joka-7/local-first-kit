@@ -15,7 +15,7 @@ PACKAGE="${4:-io.github.joka7.$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lowe
 T="$(cd "$(dirname "$0")/.." && pwd)"
 
 npm i @capacitor/core @capacitor/android @capgo/capacitor-social-login \
-  @joka-7/drive-sync @joka-7/capacitor-auth
+  @joka-07/drive-sync @joka-07/capacitor-auth
 npm i -D @capacitor/cli playwright
 
 if [ -e capacitor.config.ts ] || [ -e capacitor.config.json ]; then

@@ -44,7 +44,7 @@ const DEFAULT_FLUSH_DELAY_MS = 1500;
 
 export interface TokenResponse { access_token: string; expires_in: number }
 
-/** The Android app's sign-in (see @joka-7/capacitor-auth); absent in a browser, which uses Google's popup. */
+/** The Android app's sign-in (see @joka-07/capacitor-auth); absent in a browser, which uses Google's popup. */
 export interface NativeAuth {
   requestToken(options: { interactive: boolean }): Promise<TokenResponse | null>;
   signOut(): Promise<void>;

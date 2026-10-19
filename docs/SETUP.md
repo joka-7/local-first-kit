@@ -40,7 +40,7 @@ Do these once per app. Where a step needs a value from an earlier one, it says s
 
 ## 6. npm (publishing the kit itself)
 
-The three packages publish from CI on a version tag through npm Trusted Publishing (OIDC), the same setup as ModelDispatcher, so no token is stored in the repo. Trusted publishing cannot do a package's first publish, so for each of `@joka-7/e2ee`, `@joka-7/drive-sync` and `@joka-7/capacitor-auth`:
+The packages live under the npm scope `@joka-07`, which is the npm username; the GitHub account is `joka-7`, so the Trusted Publisher below uses `joka-7` while package names use `joka-07`. The three packages publish from CI on a version tag through npm Trusted Publishing (OIDC), the same setup as ModelDispatcher, so no token is stored in the repo. Trusted publishing cannot do a package's first publish, so for each of `@joka-07/e2ee`, `@joka-07/drive-sync` and `@joka-07/capacitor-auth`:
 
 1. Once, from a clone of this repo: `npm ci && npm run build`, then `npm publish --access public --workspace packages/<name>` (log in with an account that owns the `@joka-7` scope; an automation token also works for this one-off step).
 2. On npmjs.com → the package → **Settings → Trusted Publisher** → GitHub Actions: owner `joka-7`, repository `local-first-kit`, workflow `release.yml`.
