@@ -1,0 +1,4 @@
+// In android/app/build.gradle, replace the generated versionCode/versionName lines inside defaultConfig.
+// CI passes -PversionCode=<run number> so every APK installs over the last one.
+versionCode((project.findProperty('versionCode') ?: '1') as Integer)
+versionName((project.findProperty('versionName') ?: '1.0') as String)

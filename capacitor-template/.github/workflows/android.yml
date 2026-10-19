@@ -1,0 +1,106 @@
+name: Android
+
+# Builds the Capacitor Android app and signs it with the app's permanent key.
+# Pull requests get the APK as a workflow artifact; every push to main also
+# publishes it as a GitHub release, so the latest APK is always at
+#   https://github.com/<owner>/<repo>/releases/latest/download/__APP_NAME__.apk
+#
+# Google sign-in on Android only works for an APK signed with the key whose
+# SHA-1 is registered on the Android OAuth client, so this never falls back to
+# a temporary key: missing or wrong signing secrets fail the job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: __APP_NAME__
+  KEY_ALIAS: __KEY_ALIAS__
+  # OAuth *Web* client ID. Public by design (it is in every sign-in URL); the
+  # Android client registered for this package and key is matched to it by Google.
+  VITE_GOOGLE_CLIENT_ID: __GOOGLE_CLIENT_ID__
+  VERSION_NAME: 1.0.${{ github.run_number }}
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # This workflow can publish a release on its own, so it does not rely on
+      # a separate CI workflow having passed.
+      - name: Lint and unit tests
+        run: |
+          npm run lint
+          npm test
+
+      - name: Build the web app into the Android project
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Build the unsigned release APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease -PversionCode=${{ github.run_number }} -PversionName=$VERSION_NAME
+
+      - name: Sign the APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_B64_2: ${{ secrets.ANDROID_KEYSTORE_B64_2 }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # The keystore is split across two secrets: some clipboards cut long lines at 2000 characters.
+          KEYSTORE_B64="$KEYSTORE_B64$KEYSTORE_B64_2"
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::ANDROID_KEYSTORE_B64 is not set. Add the signing secrets (see docs/SETUP.md)."; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t' | base64 -d > release.jks 2>/dev/null \
+            || { echo "::error::ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_B64_2 are not valid base64. Paste both files again exactly."; exit 1; }
+          KEY_PASSWORD=$(printf '%s' "$KEY_PASSWORD" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          export KEY_PASSWORD
+          # Passwords go through the environment, never on a command line other processes can read.
+          keytool -list -keystore release.jks -storepass:env KEY_PASSWORD -alias "$KEY_ALIAS" > /dev/null 2>&1 \
+            || { echo "::error::ANDROID_KEY_PASSWORD does not open the keystore, or it has no '$KEY_ALIAS' key."; exit 1; }
+          echo "::notice::Signing key $(keytool -list -v -keystore release.jks -storepass:env KEY_PASSWORD -alias "$KEY_ALIAS" | grep -o 'SHA1:.*')"
+          # Newest stable build-tools (skip rc/preview directories).
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | grep -E '/[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)
+          "$BT/zipalign" -f -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk aligned.apk
+          "$BT/apksigner" sign --ks release.jks --ks-key-alias "$KEY_ALIAS" --ks-pass env:KEY_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out "$APP_NAME.apk" aligned.apk
+          "$BT/apksigner" verify "$APP_NAME.apk"
+          rm -f release.jks aligned.apk
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.APP_NAME }}-${{ env.VERSION_NAME }}-apk
+          path: ${{ env.APP_NAME }}.apk
+
+      - name: Publish the APK as a release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # A re-run keeps the run number, so the release may already exist.
+          if gh release view "android-$VERSION_NAME" > /dev/null 2>&1; then
+            gh release upload "android-$VERSION_NAME" "$APP_NAME.apk" --clobber
+          else
+            gh release create "android-$VERSION_NAME" "$APP_NAME.apk" --target "$GITHUB_SHA" --latest \
+              --title "$APP_NAME Android $VERSION_NAME" \
+              --notes "Android app built from $GITHUB_SHA. Install: download $APP_NAME.apk on the phone and open it (allow installing from this source when asked)."
+          fi

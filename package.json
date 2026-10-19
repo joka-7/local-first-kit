@@ -1,0 +1,14 @@
+{
+  "name": "local-first-kit",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "vitest run",
+    "typecheck": "tsc -b packages/drive-sync packages/e2ee packages/capacitor-auth"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

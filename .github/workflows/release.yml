@@ -1,0 +1,77 @@
+name: Release
+
+# Triggered by pushing a version tag (e.g. `v0.2.0`). Publishes
+# @joka-7/e2ee, @joka-7/drive-sync and @joka-7/capacitor-auth to npm. Every
+# package.json version must equal the tag, so bump all three before tagging.
+#
+# Publishing uses npm Trusted Publishing (OIDC), the same posture as
+# joka-7/ModelDispatcher: no stored token. Trusted publishing cannot perform a
+# package's *first* publish, so each package needs one manual `npm publish
+# --access public` before its Trusted Publisher is registered (npmjs.com ->
+# package -> Settings -> Trusted Publisher: owner=joka-7, repo=local-first-kit,
+# workflow=release.yml). See docs/SETUP.md.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Re-verify the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Verify every package version matches the pushed tag
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          for dir in packages/*; do
+            pkg_version="$(node -p "require('./$dir/package.json').version")"
+            if [ "$tag_version" != "$pkg_version" ]; then
+              echo "::error::tag v$tag_version does not match $dir/package.json version $pkg_version"
+              exit 1
+            fi
+          done
+
+  publish:
+    name: Publish ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [e2ee, drive-sync, capacitor-auth]
+    permissions:
+      # Required for npm Trusted Publishing (OIDC): no token/secret needed.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - name: Remove the empty authToken line setup-node writes
+        # An empty _authToken makes npm skip OIDC trusted publishing entirely
+        # (see ModelDispatcher's release.yml). registry-url itself must stay.
+        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+      - run: npm ci
+      - run: npm run build --workspace packages/${{ matrix.package }}
+      - name: Publish to npm
+        working-directory: packages/${{ matrix.package }}
+        # npm >= 11.5.1 is required for the OIDC exchange; the runner's bundled
+        # npm may be older, so run an exact, pinned version through npx.
+        run: npx --yes npm@11.5.1 publish --provenance --access public
