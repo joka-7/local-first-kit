@@ -4,7 +4,19 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p ." },
-  "license": "MIT"
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joka-7/local-first-kit.git",
+    "directory": "packages/drive-sync"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

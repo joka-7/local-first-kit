@@ -1,11 +1,15 @@
 # capacitor-template
 
-Wraps an app's existing web build (`dist/`) as an Android app (iOS workflow ready for later).
+Wraps an app's existing web build (`dist/`) as a signed Android app that signs in to Google Drive through the OS. iOS workflow stays disabled until an Apple Developer account exists.
 
-1. `bash scripts/setup.sh` from the app repo. Edit `capacitor.config.ts`.
-2. `npx cap add android`, then add a `build` script that outputs `dist/`.
-3. `bash scripts/generate-keystore.sh`: add the printed secrets to GitHub (`ANDROID_KEYSTORE_B64`, `_2`, `ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS`) and give the SHA-1 to the Android OAuth client in Google Cloud.
-4. Native sign-in: copy `native-auth.ts` (uses `@capgo/capacitor-social-login`, the maintained plugin for current Capacitor), set the web client ID, and use it with `createDriveStore`. Untested on a device.
-5. Publish a GitHub release; the workflow attaches the signed APK.
+| File | Purpose |
+|---|---|
+| `scripts/setup.sh` | Installs the packages, fills in the config and workflow, adds the Android project and `MainActivity` |
+| `android/MainActivity.java` | Forwards Google's consent result to the plugin; without it Drive access is refused (`__PACKAGE__` is replaced) |
+| `android/versionCode.gradle.snippet` | Lines for `build.gradle` so CI's run number becomes `versionCode` |
+| `.github/workflows/android.yml` | Lint, test, build, sign with the permanent key, publish the APK as a release |
+| `scripts/generate-keystore.sh` | Creates the key, writes the 3 secret files, prints the SHA-1 |
+| `scripts/generate-assets.mjs` | Icon and splash for every density from one 512 px icon |
+| `.github/workflows/ios-release.yml` | Disabled stub |
 
-Reminders on mobile: use `@capacitor/local-notifications` (scheduled on the phone, no server).
+Full steps: `docs/PLAYBOOK.md` (adopting the kit) and `docs/SETUP.md` (Google, Vercel and GitHub clicks).

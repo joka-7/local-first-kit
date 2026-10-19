@@ -131,3 +131,15 @@ describe('countPending', () => {
     expect(tracker(blockedStorage).countPending(MODE)).toBe(0);
   });
 });
+
+describe('ownedByAnother', () => {
+  it.each([
+    ['data created while signed out belongs to whoever connects first', null, 'uid-b', false],
+    ['the same account keeps its data', 'uid-a', 'uid-a', false],
+    ['a different account must not inherit the previous account\'s data', 'uid-a', 'uid-b', true],
+  ])('%s', (_name, owner, connecting, expected) => {
+    const storage = fakeStorage();
+    if (owner) tracker(storage).writeDataOwner(owner);
+    expect(tracker(storage).ownedByAnother(connecting)).toBe(expected);
+  });
+});

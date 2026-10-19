@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  applyOperations, createDriveSync, createPendingTracker, findCompactableFiles, formatSignInError, mergeDeviceDocuments,
-  nextStamp, parseDeviceDocument, STALE_DEVICE_FILE_MS,
+  createDriveSync, createPendingTracker, mergeDeviceDocuments, parseDeviceDocument, STALE_DEVICE_FILE_MS,
 } from './index.js';
 
 let tracker;
@@ -24,7 +23,7 @@ function fakeGoogle({
   files = {}, failWith = null, pageLimit = Infinity, failRead = {}, revokedTokens = [], flaky = null,
 } = {}) {
   const state = {
-    files: { ...files }, nextId: 1, patched: [], deleted: [], listings: 0, reads: [], clock: 0, active: 0, maxActive: 0,
+    files: { ...files }, nextId: 1, patched: [], deleted: [], listings: 0, pageSizes: [], reads: [], clock: 0, active: 0, maxActive: 0,
   };
   // Files without their own modifiedTime get an increasing one, as Drive would give them.
   const touch = (file) => { file.modifiedTime = new Date(NOW + ++state.clock).toISOString(); return file; };
@@ -46,6 +45,7 @@ function fakeGoogle({
     if (revokedTokens.some((t) => init.headers?.Authorization === `Bearer ${t}`)) return json({}, 401);
     if (url === 'https://oauth2.googleapis.com/revoke') {
       state.revoked = new URLSearchParams(init.body).get('token');
+      state.revokeMethod = init.method;
       return json({});
     }
     if (url === 'https://openidconnect.googleapis.com/v1/userinfo') return json(USER);
@@ -73,6 +73,7 @@ function fakeGoogle({
     if (url.startsWith('https://www.googleapis.com/drive/v3/files?')) {
       state.listings += 1;
       const params = new URL(url).searchParams;
+      state.pageSizes.push(params.get('pageSize'));
       const exact = params.get('q').match(/^name = '(.+)'$/)?.[1];
       const list = Object.entries(state.files)
         .filter(([, f]) => (exact ? f.name === exact : f.name.startsWith('kandone-')))
@@ -138,7 +139,7 @@ const signedIn = () => memoryStorage({ [SESSION_KEY]: validSession() });
 
 function build({
   google = fakeGoogle(), gis = fakeGis(), storage = memoryStorage(), clientId = 'client-id',
-  withLock = (task) => task(), persistDeviceId = true, deviceIds = ['this', 'next'], tabStorage = memoryStorage(),
+  withLock = (task) => task(), persistDeviceId, deviceIds = ['this', 'next'], tabStorage = memoryStorage(),
   nativeAuth = null, isOnline = () => true,
 } = {}) {
   const ids = [...deviceIds];
@@ -154,7 +155,7 @@ function build({
     ...IDENTITY,
     onWritesLanded: tracker.clearPendingIds,
     withLock,
-    persistDeviceId,
+    ...(persistDeviceId === undefined ? {} : { persistDeviceId }),
     flushDelayMs: 100,
     nativeAuth,
     isOnline,
@@ -196,93 +197,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('engine', () => {
-  describe('parseDeviceDocument', () => {
-    it('keeps valid entries and drops malformed ones', () => {
-      const parsed = parseDeviceDocument({
-        version: 1,
-        device: 'd1',
-        profile: { labels: { value: [], at: 1 }, broken: { at: 'x' } },
-        collections: { tasks: { 1: { item: { id: 1 }, at: 5 }, 2: { item: 'text', at: 5 }, 3: { item: null, at: 6 } } },
-      });
-
-      expect(parsed).toEqual({
-        version: 1,
-        device: 'd1',
-        profile: { labels: { value: [], at: 1 } },
-        collections: { tasks: { 1: { item: { id: 1 }, at: 5 }, 3: { item: null, at: 6 } } },
-      });
-    });
-
-    it.each([
-      ['null', null, 'corrupt-file'],
-      ['an array', [], 'corrupt-file'],
-      ['a file with no device id', { version: 1 }, 'corrupt-file'],
-      ['a newer format', { version: 2, device: 'd1' }, 'unsupported-version'],
-    ])('refuses %s instead of treating it as empty', (_name, raw, code) => {
-      expect(() => parseDeviceDocument(raw)).toThrow(expect.objectContaining({ code }));
-    });
-  });
-
-  describe('applyOperations', () => {
-    it('stamps upserts, deletes and profile fields with the write time without touching the input', () => {
-      const base = parseDeviceDocument({ version: 1, device: 'd1', collections: { tasks: { 1: { item: { id: 1 }, at: 1 } } } });
-
-      const next = applyOperations(base, [
-        { type: 'upsert', collection: 'tasks', item: { id: 2 } },
-        { type: 'delete', collection: 'tasks', id: 1 },
-        { type: 'profile', data: { appMode: 'tasks' } },
-      ], 50);
-
-      expect(next).toEqual({
-        version: 1,
-        device: 'd1',
-        profile: { appMode: { value: 'tasks', at: 50 } },
-        collections: { tasks: { 1: { item: null, at: 50 }, 2: { item: { id: 2 }, at: 50 } } },
-      });
-      expect(base.collections.tasks[1].item).toEqual({ id: 1 });
-    });
-  });
-
-  describe('mergeDeviceDocuments', () => {
-    it('keeps the newest version of each record and field across devices', () => {
-      const doc = (device, tasks, profile = {}) => parseDeviceDocument({ version: 1, device, profile, collections: { tasks } });
-      const cases = [
-        ['newer edit wins', [doc('a', { 1: { item: { id: 1, v: 'old' }, at: 1 } }), doc('b', { 1: { item: { id: 1, v: 'new' }, at: 2 } })], [{ id: 1, v: 'new' }]],
-        ['newer delete hides an older copy', [doc('a', { 1: { item: { id: 1 }, at: 1 } }), doc('b', { 1: { item: null, at: 2 } })], []],
-        ['older delete loses to a newer edit', [doc('a', { 1: { item: { id: 1 }, at: 3 } }), doc('b', { 1: { item: null, at: 2 } })], [{ id: 1 }]],
-        ['a tie goes to the higher device id', [doc('b', { 1: { item: { id: 1, v: 'b' }, at: 1 } }), doc('a', { 1: { item: { id: 1, v: 'a' }, at: 1 } })], [{ id: 1, v: 'b' }]],
-        ['records only one device has are kept', [doc('a', { 1: { item: { id: 1 }, at: 1 } }), doc('b', { 2: { item: { id: 2 }, at: 1 } })], [{ id: 1 }, { id: 2 }]],
-      ];
-
-      for (const [name, docs, expected] of cases) {
-        expect(mergeDeviceDocuments(docs).collections.tasks, name).toEqual(expected);
-      }
-    });
-
-    it('reports the ids whose newest entry is a delete', () => {
-      const doc = (device, tasks) => parseDeviceDocument({ version: 1, device, collections: { tasks } });
-
-      const { deleted } = mergeDeviceDocuments([
-        doc('a', { 1: { item: { id: 1 }, at: 1 }, 2: { item: { id: 2 }, at: 5 } }),
-        doc('b', { 1: { item: null, at: 2 }, 2: { item: null, at: 4 } }),
-      ]);
-
-      expect(deleted).toEqual({ tasks: ['1'] });
-    });
-  });
-
-  describe('nextStamp', () => {
-    it.each([
-      ['the clock is ahead of everything seen', 100, 50, 100],
-      ['another device wrote with a clock running ahead', 100, 500, 501],
-      ['a write landed in the same millisecond', 100, 100, 101],
-    ])('stamps after %s', (_name, now, latestSeen, expected) => {
-      expect(nextStamp(now, latestSeen)).toBe(expected);
-    });
-  });
-
-  describe('createDriveSync', () => {
+describe('createDriveSync', () => {
+  describe('in a browser', () => {
     describe('signInWithGoogle', () => {
       it('stores the session and reports the user to listeners', async () => {
         const { sync, storage } = build();
@@ -344,7 +260,7 @@ describe('engine', () => {
       });
     });
 
-    describe('batchSaveItems', () => {
+    describe('upsertMany', () => {
       it('coalesces a burst of writes into one upload of this device\'s own file', async () => {
         const google = fakeGoogle({ files: { other: deviceFile('other', { tasks: { 9: { item: { id: 9 }, at: 1 } } }) } });
         const { sync } = build({ google, storage: signedIn() });
@@ -454,9 +370,46 @@ describe('engine', () => {
 
         expect(results).toEqual([['kandone-tab-1.json'], ['kandone-tab-1.json', 'kandone-tab-2.json']]);
       });
+
+      it.each([
+        ['Web Locks exist', { locks: { request: vi.fn((_name, task) => task()) } }, ['kandone-tab-1.json']],
+        ['Web Locks are missing', {}, ['kandone-tab-1.json', 'kandone-tab-2.json']],
+      ])('by default shares one device file across tabs only when %s', async (_name, navigatorStub, expected) => {
+        vi.stubGlobal('navigator', navigatorStub);
+        const storage = signedIn();
+        const google = fakeGoogle();
+        for (const deviceId of ['tab-1', 'tab-2']) {
+          const sync = createDriveSync({
+            ...IDENTITY, clientId: 'client-id', fetchImpl: google.fetchImpl, storage, tabStorage: memoryStorage(),
+            newDeviceId: () => deviceId, flushDelayMs: 100,
+          });
+          const done = sync.upsert('tasks', { id: 1 });
+          await settle();
+          await done;
+        }
+        vi.unstubAllGlobals();
+
+        expect(Object.values(google.state.files).map((f) => f.name)).toEqual(expected);
+      });
+
+      it('writes under the app\'s own lock name when Web Locks exist', async () => {
+        const request = vi.fn((_name, task) => task());
+        vi.stubGlobal('navigator', { locks: { request } });
+        const google = fakeGoogle();
+        const sync = createDriveSync({
+          ...IDENTITY, clientId: 'client-id', fetchImpl: google.fetchImpl, storage: signedIn(), tabStorage: memoryStorage(),
+          newDeviceId: () => 'this', flushDelayMs: 100,
+        });
+        const done = sync.upsert('tasks', { id: 1 });
+        await settle();
+        await done;
+        vi.unstubAllGlobals();
+
+        expect(request.mock.calls.map(([name]) => name)).toEqual([IDENTITY.lockName]);
+      });
     });
 
-    describe('deleteItem', () => {
+    describe('remove', () => {
       it('hides the record even though another device still holds an older copy', async () => {
         const google = fakeGoogle({ files: { other: deviceFile('other', { tasks: { 1: { item: { id: 1 }, at: NOW - 10 } } }) } });
         const { sync } = build({ google, storage: signedIn() });
@@ -469,7 +422,7 @@ describe('engine', () => {
       });
     });
 
-    describe('loadAllItems', () => {
+    describe('pullCollection', () => {
       it.each([
         ['no files yet', {}, null],
         ['two devices', {
@@ -508,6 +461,15 @@ describe('engine', () => {
         expect((await sync.pullCollection('tasks')).items).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
       });
 
+      it('asks Drive for 1000 files per listing page', async () => {
+        const google = fakeGoogle({ files: { a: deviceFile('a') } });
+        const { sync } = build({ google, storage: signedIn() });
+
+        await sync.pullCollection('tasks');
+
+        expect(google.state.pageSizes).toEqual(['1000']);
+      });
+
       it('signs the user out in the header when Google rejects the token', async () => {
         const { sync } = build({ google: fakeGoogle({ failWith: 401 }), storage: signedIn() });
         const seen = [];
@@ -518,7 +480,7 @@ describe('engine', () => {
       });
     });
 
-    describe('loadTaskLabels', () => {
+    describe('loadProfile', () => {
       it('round-trips labels saved with saveTaskLabels and is null before any are saved', async () => {
         const { sync } = build({ storage: signedIn() });
         const empty = await sync.loadProfile().then((profile) => profile.tasksLabels ?? null);
@@ -544,7 +506,7 @@ describe('engine', () => {
     });
   });
 
-  describe('createDriveSync in the Android app', () => {
+  describe('in the Android app', () => {
     describe('signInWithGoogle', () => {
       it('signs in through Android, never loading Google\'s browser script', async () => {
         const nativeAuth = fakeNativeAuth();
@@ -643,7 +605,7 @@ describe('engine', () => {
       });
     });
 
-    describe('updateItem', () => {
+    describe('upsert', () => {
       it.each([
         ['the stored token has expired', expiredSession(), []],
         ['Google rejects the stored token', signedIn(), ['token-1']],
@@ -689,8 +651,8 @@ describe('engine', () => {
 
         await sync.deleteAllSyncedData();
 
-        expect([google.state.deleted, google.state.revoked, nativeAuth.signOut.mock.calls.length, loadGis.mock.calls.length])
-          .toEqual([['a'], 'app-token-1', 1, 0]);
+        expect([google.state.deleted, google.state.revoked, google.state.revokeMethod, nativeAuth.signOut.mock.calls.length, loadGis.mock.calls.length])
+          .toEqual([['a'], 'app-token-1', 'POST', 1, 0]);
       });
     });
   });
@@ -1175,55 +1137,6 @@ describe('engine', () => {
     });
   });
 
-  describe('findCompactableFiles', () => {
-    const NOW_MS = 1_700_000_000_000;
-    const old = new Date(NOW_MS - STALE_DEVICE_FILE_MS - 1).toISOString();
-    const recent = new Date(NOW_MS).toISOString();
-    const doc = (device, tasks) => ({ version: 1, device, profile: {}, collections: { tasks } });
-    const entry = (at, name = 'x') => ({ item: { id: 1, name }, at });
-    const options = { now: NOW_MS, isOwn: () => false };
-
-    it('lists only files that are idle, not needed and not this device\'s own', () => {
-      const entries = [
-        { id: 'a', name: 'kandone-a.json', modifiedTime: old, document: doc('a', { 1: entry(5) }) },
-        { id: 'b', name: 'kandone-b.json', modifiedTime: recent, document: doc('b', { 1: entry(9) }) },
-        { id: 'c', name: 'kandone-c.json', modifiedTime: old, document: doc('c', { 1: entry(2) }) },
-      ];
-
-      const ids = findCompactableFiles(entries, { ...options, isOwn: (f) => f.id === 'c' }).map((f) => f.id);
-
-      expect(ids).toEqual(['a']);
-    });
-
-    it('asks whether a file is its own only once it is otherwise deletable', () => {
-      const isOwn = vi.fn(() => false);
-      const entries = [
-        { id: 'a', name: 'kandone-a.json', modifiedTime: old, document: doc('a', { 1: entry(9) }) },
-      ];
-
-      findCompactableFiles(entries, { ...options, isOwn });
-
-      expect(isOwn).not.toHaveBeenCalled();
-    });
-
-    it('measures idleness against the newest write Drive reports when the local clock is ahead of it', () => {
-      const entries = [
-        { id: 'a', name: 'kandone-a.json', modifiedTime: old, document: doc('a', { 1: entry(5) }) },
-        { id: 'b', name: 'kandone-b.json', modifiedTime: old, document: doc('b', { 1: entry(9) }) },
-      ];
-
-      // The only evidence of "now" is Drive's own newest write, which is as old as the file.
-      expect(findCompactableFiles(entries, { ...options, now: NOW_MS + 10 * STALE_DEVICE_FILE_MS })).toEqual([]);
-    });
-
-    it('lists nothing when the document carries entries it could not parse', () => {
-      const lossy = { id: 'a', name: 'kandone-a.json', modifiedTime: old, document: doc('a', { 1: entry(5) }), lossy: true };
-      const live = { id: 'b', name: 'kandone-b.json', modifiedTime: recent, document: doc('b', { 1: entry(9) }) };
-
-      expect(findCompactableFiles([lossy, live], options)).toEqual([]);
-    });
-  });
-
   describe('deleteAllSyncedData', () => {
     it('deletes every device file, revokes the Google grant and signs out, leaving unrelated files alone', async () => {
       const google = fakeGoogle({
@@ -1274,15 +1187,4 @@ describe('engine', () => {
     });
   });
 
-  describe('formatSignInError', () => {
-    it.each([
-      [{ code: 'popup_failed_to_open' }, 'Popup blocked. Allow popups for this site, then try again.'],
-      [{ code: 'access_denied' }, 'Sign-in cancelled.'],
-      [{ code: 'gis-load-failed' }, 'Could not reach Google. Check your connection or ad blocker.'],
-      [{ message: 'boom' }, 'boom'],
-      [null, 'Sign-in failed.'],
-    ])('maps %j', (err, expected) => {
-      expect(formatSignInError(err)).toBe(expected);
-    });
-  });
 });

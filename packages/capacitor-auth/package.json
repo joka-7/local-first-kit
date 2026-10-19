@@ -4,9 +4,26 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist"],
-  "scripts": { "build": "tsc -p ." },
-  "peerDependencies": { "@capgo/capacitor-social-login": ">=8.5.12 <9" },
-  "devDependencies": { "@capacitor/core": "8.5.2", "@capgo/capacitor-social-login": "8.5.12" },
-  "license": "MIT"
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "peerDependencies": {
+    "@capgo/capacitor-social-login": ">=8.5.12 <9"
+  },
+  "devDependencies": {
+    "@capacitor/core": "8.5.2",
+    "@capgo/capacitor-social-login": "8.5.12"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/joka-7/local-first-kit.git",
+    "directory": "packages/capacitor-auth"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
