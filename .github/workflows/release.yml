@@ -1,7 +1,7 @@
 name: Release
 
 # Triggered by pushing a version tag (e.g. `v0.2.0`). Publishes
-# @joka-7/e2ee, @joka-7/drive-sync and @joka-7/capacitor-auth to npm. Every
+# @joka-07/e2ee, @joka-07/drive-sync and @joka-07/capacitor-auth to npm. Every
 # package.json version must equal the tag, so bump all three before tagging.
 #
 # Publishing uses npm Trusted Publishing (OIDC), the same posture as

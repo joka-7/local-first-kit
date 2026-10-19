@@ -5,7 +5,7 @@
 
 ## e2ee
 
-`@joka-7/e2ee`: libsodium secretbox for blobs, sealed boxes for submissions to a public key, `wrapKey` for group keys, `buildShareLink` (key in the `#fragment`), `exportRecoveryKey` / `importRecoveryKey`. A lost recovery key plus lost devices means lost data; say so in the UI.
+`@joka-07/e2ee`: libsodium secretbox for blobs, sealed boxes for submissions to a public key, `wrapKey` for group keys, `buildShareLink` (key in the `#fragment`), `exportRecoveryKey` / `importRecoveryKey`. A lost recovery key plus lost devices means lost data; say so in the UI.
 
 ## Privacy note template
 

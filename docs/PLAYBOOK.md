@@ -23,13 +23,13 @@ Every rule below is a bug KanDOne hit on a real phone. Rules 1-12 each have a te
 ## How to adopt the kit in an app
 
 1. **Set up Google and GitHub first** (`docs/SETUP.md`): you need the Web client ID and, for Android, the keystore secrets.
-2. **Install:** `npm i @joka-7/drive-sync` (plus `@joka-7/capacitor-auth @capgo/capacitor-social-login @capacitor/core` for the Android app).
+2. **Install:** `npm i @joka-07/drive-sync` (plus `@joka-07/capacitor-auth @capgo/capacitor-social-login @capacitor/core` for the Android app).
 3. **Create the client once**, in one module. The app supplies the file prefix, storage keys and lock name; nothing in the kit is app-specific:
 
    ```ts
    import { Capacitor } from "@capacitor/core";
-   import { createNativeGoogleAuth } from "@joka-7/capacitor-auth";
-   import { createDriveSync, createPendingTracker } from "@joka-7/drive-sync";
+   import { createNativeGoogleAuth } from "@joka-07/capacitor-auth";
+   import { createDriveSync, createPendingTracker } from "@joka-07/drive-sync";
 
    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? "";
    const fetchImpl: typeof fetch = (...args) => fetch(...args);

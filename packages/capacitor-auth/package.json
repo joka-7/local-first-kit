@@ -1,5 +1,5 @@
 {
-  "name": "@joka-7/capacitor-auth",
+  "name": "@joka-07/capacitor-auth",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
