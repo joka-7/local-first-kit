@@ -49,7 +49,7 @@ jobs:
       # a separate CI workflow having passed.
       - name: Lint and unit tests
         run: |
-          npm run lint --if-present
+          npm run lint
           npm test
 
       - name: Build the web app into the Android project

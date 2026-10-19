@@ -443,6 +443,8 @@ describe('createDriveSync', () => {
       it.each([
         ['is rate limited', 429],
         ['fails on the server', 503],
+        ['is rejected as unauthorised', 401],
+        ['is forbidden', 403],
         ['drops the connection mid-download', 'network'],
       ])('fails the whole read when one device\'s file %s, rather than merging without it', async (_name, failure) => {
         const files = {
@@ -459,6 +461,22 @@ describe('createDriveSync', () => {
         const { sync } = build({ google: fakeGoogle({ files, pageLimit: 2 }), storage: signedIn() });
 
         expect((await sync.pullCollection('tasks')).items).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+      });
+
+      it.each([[''], ["a'b"], ['a b'], ['a/b']])('refuses the file prefix %j, which would break the Drive query', (filePrefix) => {
+        expect(() => createDriveSync({ ...IDENTITY, filePrefix, clientId: 'client-id', fetchImpl: fakeGoogle().fetchImpl }))
+          .toThrow(expect.objectContaining({ code: 'invalid-config' }));
+      });
+
+      it('replaces a stored device id that is not a safe file name part', async () => {
+        const storage = memoryStorage({ [SESSION_KEY]: validSession(), app_drive_device_v1: JSON.stringify("x' or 'a'='a") });
+        const google = fakeGoogle();
+        const { sync } = build({ google, storage, persistDeviceId: true, deviceIds: ['fresh'] });
+        const done = sync.upsert('tasks', { id: 1 });
+        await settle();
+        await done;
+
+        expect(Object.values(google.state.files).map((f) => f.name)).toEqual(['kandone-fresh.json']);
       });
 
       it('asks Drive for 1000 files per listing page', async () => {
@@ -481,7 +499,7 @@ describe('createDriveSync', () => {
     });
 
     describe('loadProfile', () => {
-      it('round-trips labels saved with saveTaskLabels and is null before any are saved', async () => {
+      it('round-trips profile fields saved with saveProfile and is null before any are saved', async () => {
         const { sync } = build({ storage: signedIn() });
         const empty = await sync.loadProfile().then((profile) => profile.tasksLabels ?? null);
 

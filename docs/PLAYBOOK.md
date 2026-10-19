@@ -1,6 +1,6 @@
 # Playbook: local-first apps with Drive sync
 
-Every rule below is a bug KanDOne hit on a real phone. Each one has a test in this repo that fails without the fix (checked by mutating the code, see "Mutation checks" at the end).
+Every rule below is a bug KanDOne hit on a real phone. Rules 1-12 each have a test in this repo that fails without the fix (checked by mutating the code, see "Mutation checks" at the end). Rule 13 is the Android shell, which is checked on a device instead.
 
 ## The 13 rules
 
@@ -17,7 +17,7 @@ Every rule below is a bug KanDOne hit on a real phone. Each one has a test in th
 | 9 | **Web token** is kept in `localStorage` with its expiry, so a reload within the hour stays connected. Google's script is preloaded so the Connect click opens the popup synchronously. | `engine.ts` `setSession`, `onAuthChange` | "opens the Google popup synchronously once the script has preloaded", "reports a stored session only while its token is valid" |
 | 10 | **Android token** comes from the OS (`refresh` then `getAuthorizationCode`); the real expiry comes from `tokeninfo`; renewal is lazy, 5 s before expiry (a 60 s margin gets the same token back); on a 401, renew and retry once; after a failed renewal the user shows as signed out and renewal backs off for 5 minutes. | `capacitor-auth/src/index.ts`; `engine.ts` `renewSilently`, `driveFetch` | `capacitor-auth/src/index.test.ts`, `engine.test.ts` "in the Android app" |
 | 11 | **Auth listeners** hear only a change of the connected uid, never a token swap, and the dedupe is re-seeded on every subscribe. | `engine.ts` `notifyListeners`, `onAuthChange` | "reports the user once, through a lapsed token, a rejected token and their silent renewals", "reports a sign-in to a subscriber whose first report was signed out" |
-| 12 | **Data owner:** sign-out clears local data and the owner marker. Connecting with a different account discards the previous account's local data; it is never merged. `deleteAllSyncedData()` deletes every file, then revokes (GIS on the web; `POST oauth2.googleapis.com/revoke` plus device sign-out on Android). | `pending.ts` `ownedByAnother`, `clearLocalSyncState`; `engine.ts` `deleteAllSyncedData` | `pending.test.ts`, `engine.test.ts` `deleteAllSyncedData` |
+| 12 | **Data owner:** sign-out clears local data and the owner marker (the app does this: the kit supplies `clearLocalSyncState` and `ownedByAnother`, see step 8). Connecting with a different account discards the previous account's local data; it is never merged. `deleteAllSyncedData()` deletes every file, then revokes (GIS on the web; `POST oauth2.googleapis.com/revoke` plus device sign-out on Android). | `pending.ts` `ownedByAnother`, `clearLocalSyncState`; `engine.ts` `deleteAllSyncedData` | `pending.test.ts`, `engine.test.ts` `deleteAllSyncedData` |
 | 13 | **Android shell:** no service worker and no install button inside the app; `versionCode` comes from `-PversionCode`; `MainActivity` forwards Google's consent result to the plugin. | `capacitor-template/` | Not unit-testable; checked on a device (see "Android shell" below) |
 
 ## How to adopt the kit in an app
@@ -88,7 +88,7 @@ Every rule below is a bug KanDOne hit on a real phone. Each one has a test in th
    ```
 
    Then run `capacitor-template/scripts/setup.sh` (see `capacitor-template/README.md`).
-10. **CSP.** If the app sets a Content-Security-Policy, allow `https://accounts.google.com/gsi/client` as a script and `www.googleapis.com`, `oauth2.googleapis.com` and `openidconnect.googleapis.com` as connect targets, since those are the origins the engine calls.
+10. **CSP.** If the app sets a Content-Security-Policy, mirror KanDOne's working policy (`index.html`): `script-src` needs `https://apis.google.com https://accounts.google.com https://www.gstatic.com https://www.google.com https://www.googleapis.com`; `connect-src` needs `https://*.googleapis.com https://oauth2.googleapis.com https://www.googleapis.com`; `frame-src` needs `https://accounts.google.com https://www.google.com`. Google's script loads from `accounts.google.com/gsi/client`, and the engine calls the Drive, userinfo, tokeninfo and revoke endpoints.
 11. **Tests.** Inject fakes: `createDriveSync` takes `fetchImpl`, `loadGis`, `storage`, `tabStorage`, `now`, `newDeviceId`, `withLock`, `sleep`, `random` and `isOnline`. `packages/drive-sync/src/engine.test.ts` has a fake Drive, fake GIS and fake native auth to copy.
 
 ## Android shell
@@ -104,4 +104,4 @@ The three parts of rule 13 live in `capacitor-template/`: `android/MainActivity.
 
 ## Mutation checks
 
-Each rule above was verified by breaking the code one way per rule (for example `nextStamp` returning `now`, the pageSize set to 100, the revoke sent as `GET`) and confirming the suite fails. Re-run that check when you change the engine.
+Rules 1-12 were verified by breaking the code one way per rule (for example `nextStamp` returning `now`, the pageSize set to 100, the revoke sent as `GET`) and confirming the suite fails; this was done by hand for this release (there is no script or CI step behind it), so repeat it when you change the engine.

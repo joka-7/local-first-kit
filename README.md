@@ -1,6 +1,6 @@
 # local-first-kit
 
-Shared foundation for making apps local-first (data on device, optional Google Drive or end-to-end encrypted sync) and shipping them as Android apps. Apps install the packages instead of copying code.
+Shared foundation for making apps local-first (data on device, optional Google Drive sync, plus an e2ee toolbox for apps that need it) and shipping them as Android apps. Apps install the packages instead of copying code.
 
 - `packages/drive-sync` (`@joka-7/drive-sync`): per-device Drive files in the hidden `appDataFolder`, newest-entry-wins merge with tombstones, pending-edit tracking, token handling for browser and Android. Generic over collections.
 - `packages/capacitor-auth` (`@joka-7/capacitor-auth`): Google sign-in for the Android app through the OS, with silent token renewal.

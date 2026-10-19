@@ -151,6 +151,9 @@ async function settleWithConcurrency<T, R>(
   return results;
 }
 
+/** Safe inside a single-quoted Drive query and a file name. */
+const SAFE_NAME_PART = /^[A-Za-z0-9_-]+$/;
+
 interface DriveFile { id: string; name: string; modifiedTime?: string }
 
 /**
@@ -184,6 +187,10 @@ export function createDriveSync({
   random = Math.random,
   isOnline = () => globalThis.navigator?.onLine !== false,
 }: DriveSyncOptions) {
+  // Both end up inside Drive `q=` strings, so reject anything that could break or widen the query.
+  if (!SAFE_NAME_PART.test(filePrefix)) {
+    throw new DriveSyncError("filePrefix must be letters, digits, '_' or '-' only, and not empty.", { code: "invalid-config" });
+  }
   let session = readJson<Session>(storage, storageKeys.session);
   let gis: GoogleGlobal | null = null;
   let gisLoading: Promise<GoogleGlobal> | null = null;
@@ -239,7 +246,8 @@ export function createDriveSync({
   /** Stable per browser and shared by its tabs; per tab when that is unsafe or storage is blocked. */
   function deviceId(): string {
     if (device) return device;
-    device = readJson<string>(deviceStorage, storageKeys.device) ?? newDeviceId();
+    const stored = readJson<unknown>(deviceStorage, storageKeys.device);
+    device = typeof stored === "string" && SAFE_NAME_PART.test(stored) ? stored : newDeviceId();
     writeJson(deviceStorage, storageKeys.device, device);
     return device;
   }
