@@ -5,10 +5,10 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "vitest run",
-    "typecheck": "tsc -b packages/drive-sync packages/e2ee"
+    "typecheck": "tsc -b packages/drive-sync packages/e2ee packages/capacitor-auth"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
   }
 }

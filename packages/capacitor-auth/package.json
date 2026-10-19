@@ -1,0 +1,12 @@
+{
+  "name": "@joka-7/capacitor-auth",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": { "build": "tsc -p ." },
+  "peerDependencies": { "@capgo/capacitor-social-login": ">=8.5.12 <9" },
+  "devDependencies": { "@capacitor/core": "8.5.2", "@capgo/capacitor-social-login": "8.5.12" },
+  "license": "MIT"
+}
