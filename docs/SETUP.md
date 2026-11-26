@@ -7,7 +7,7 @@ Do these once per app. Where a step needs a value from an earlier one, it says s
 1. Open [console.cloud.google.com](https://console.cloud.google.com) and create a project (or pick the app's existing one).
 2. **APIs & Services → Library →** search **Google Drive API → Enable**.
 3. **APIs & Services → OAuth consent screen** (Google Auth Platform → Data Access):
-   - Add the scope `https://www.googleapis.com/auth/drive.appdata`. Also keep `openid`, `email` and `profile`.
+   - Add the scope `https://www.googleapis.com/auth/drive.appdata`. Also keep `openid`, `email` and `profile`. An app that shares files with other people (and passes `scopes` to `createNativeGoogleAuth`) adds `https://www.googleapis.com/auth/drive.file` too.
    - Fill in the app name, support email and (when asked) the privacy-policy link.
    - **Publish** the app (Publishing status → **In production**). While it stays in *Testing*, only listed test users can sign in and their grants expire after 7 days.
 

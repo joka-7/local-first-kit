@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNativeGoogleAuth } from './index.js';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
 function fakePlugin({ loginToken = 'login-token', silentToken = 'silent-token', initFailures = 0 } = {}) {
   let failuresLeft = initFailures;
@@ -21,8 +22,8 @@ function fakeTokenInfo({ expiresIn = 1800, status = 200 } = {}) {
   return vi.fn(async () => ({ ok: status < 400, status, json: async () => ({ expires_in: String(expiresIn) }) }));
 }
 
-function build({ plugin = fakePlugin(), fetchImpl = fakeTokenInfo() } = {}) {
-  const auth = createNativeGoogleAuth({ webClientId: 'web-client', fetchImpl, loadPlugin: async () => plugin });
+function build({ plugin = fakePlugin(), fetchImpl = fakeTokenInfo(), scopes = undefined as string[] | undefined } = {}) {
+  const auth = createNativeGoogleAuth({ webClientId: 'web-client', fetchImpl, loadPlugin: async () => plugin, ...(scopes ? { scopes } : {}) });
   return { auth, plugin, fetchImpl };
 }
 
@@ -36,6 +37,19 @@ describe('nativeGoogleAuth.js', () => {
 
         expect([token, plugin.login.mock.calls[0][0].options.scopes.includes(DRIVE_SCOPE)])
           .toEqual([{ access_token: 'login-token', expires_in: 1800 }, true]);
+      });
+
+      it.each([
+        ['the default scopes', undefined, [DRIVE_SCOPE, 'email', 'profile']],
+        ['the scopes the app passed', [DRIVE_SCOPE, FILE_SCOPE], [DRIVE_SCOPE, FILE_SCOPE]],
+      ])('asks for %s both interactively and when renewing', async (_name, scopes, expected) => {
+        const { auth, plugin } = build({ scopes });
+
+        await auth.requestToken({ interactive: true });
+        await auth.requestToken({ interactive: false });
+
+        expect([plugin.login.mock.calls[0][0].options.scopes, plugin.refresh.mock.calls[0][0].options.scopes])
+          .toEqual([expected, expected]);
       });
 
       it('renews silently without showing the account sheet', async () => {
@@ -76,6 +90,11 @@ describe('nativeGoogleAuth.js', () => {
           [{ google: { webClientId: 'web-client', mode: 'online' } }],
         ]);
       });
+    });
+
+    it('refuses an empty scope list', () => {
+      expect(() => createNativeGoogleAuth({ webClientId: 'web-client', fetchImpl: fakeTokenInfo(), scopes: [] }))
+        .toThrow('at least one scope');
     });
 
     describe('signOut', () => {
