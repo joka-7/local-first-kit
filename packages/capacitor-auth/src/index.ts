@@ -11,7 +11,8 @@
  * (`{ access_token, expires_in }`) so @joka-07/drive-sync treats both alike.
  */
 
-const SCOPES = ["https://www.googleapis.com/auth/drive.appdata", "email", "profile"];
+/** What the kit's own sync needs: the hidden app-data folder, plus the account's email and name. */
+export const DEFAULT_SCOPES: readonly string[] = ["https://www.googleapis.com/auth/drive.appdata", "email", "profile"];
 const TOKENINFO_URL = "https://oauth2.googleapis.com/tokeninfo";
 
 export interface TokenResponse { access_token: string; expires_in: number }
@@ -36,9 +37,16 @@ export interface NativeGoogleAuthOptions {
   webClientId: string;
   fetchImpl: typeof fetch;
   loadPlugin?: () => Promise<SocialLoginPlugin>;
+  /**
+   * The OAuth scopes to ask for, in full (default `DEFAULT_SCOPES`). An app that
+   * also shares files with other people adds `drive.file` here, and must ask the
+   * browser sign-in for the same list.
+   */
+  scopes?: readonly string[];
 }
 
-export function createNativeGoogleAuth({ webClientId, fetchImpl, loadPlugin = loadSocialLogin }: NativeGoogleAuthOptions) {
+export function createNativeGoogleAuth({ webClientId, fetchImpl, loadPlugin = loadSocialLogin, scopes = DEFAULT_SCOPES }: NativeGoogleAuthOptions) {
+  if (scopes.length === 0) throw new Error("createNativeGoogleAuth needs at least one scope.");
   let ready: Promise<SocialLoginPlugin> | null = null;
 
   function plugin(): Promise<SocialLoginPlugin> {
@@ -73,10 +81,10 @@ export function createNativeGoogleAuth({ webClientId, fetchImpl, loadPlugin = lo
     async requestToken({ interactive }: { interactive: boolean }): Promise<TokenResponse | null> {
       const socialLogin = await plugin();
       if (interactive) {
-        const { result } = await socialLogin.login({ provider: "google", options: { scopes: SCOPES } });
+        const { result } = await socialLogin.login({ provider: "google", options: { scopes: [...scopes] } });
         return withExpiry(result?.accessToken?.token);
       }
-      await socialLogin.refresh({ provider: "google", options: { scopes: SCOPES } });
+      await socialLogin.refresh({ provider: "google", options: { scopes: [...scopes] } });
       const { accessToken } = await socialLogin.getAuthorizationCode({ provider: "google" });
       return withExpiry(accessToken);
     },
